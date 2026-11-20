@@ -3,7 +3,7 @@
 // ======================================================================
 export const MARCA = 'Conciliador';
 export const ESLOGAN = 'Verifica tus pagos en segundos, sin entrar tú al banco.';
-export const WHATSAPP = '+58 412-000-0000'; // <- pon tu número real
+export const WHATSAPP = '0422-7410094';
 export const AVISO_LEGAL =
 	'Producto independiente. No está afiliado al Banco de Venezuela.';
 

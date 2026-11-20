@@ -1,11 +1,27 @@
 import React from 'react';
-import {AbsoluteFill, Sequence, interpolate, useCurrentFrame} from 'remotion';
+import {AbsoluteFill, Audio, Sequence, interpolate, staticFile, useCurrentFrame} from 'remotion';
 import {AVISO_LEGAL, C, ESLOGAN, WHATSAPP} from './config';
 import {Fondo, Marca, Sube, TarjetaApp, useEntrada, useSalida} from './componentes';
 import {Candado, Chat, Check, Lista, Logo, Personas, Reloj} from './iconos';
+import voz from './voz.json';
 
-export const ESCENAS = {gancho: 95, dolor: 140, revelacion: 80, demo: 225, fraude: 130, beneficios: 135, cierre: 120};
+// Duraciones y momentos de cada frase: los calcula narracion/generar_voz.py en src/voz.json
+type NombreEscena = 'gancho' | 'dolor' | 'revelacion' | 'demo' | 'fraude' | 'beneficios' | 'cierre';
+const V = voz.escenas as Record<NombreEscena, {duracion: number; frases: {id: string; desde: number; frames: number}[]}>;
+export const ESCENAS = Object.fromEntries(Object.entries(V).map(([k, v]) => [k, v.duracion])) as Record<NombreEscena, number>;
 export const DURACION_VIDEO = Object.values(ESCENAS).reduce((a, b) => a + b, 0);
+const frase = (escena: NombreEscena, id: string) => V[escena].frases.find((f) => f.id === id)!;
+
+/** Pone los audios de la voz de una escena en su momento. */
+const Voz: React.FC<{escena: NombreEscena}> = ({escena}) => (
+	<>
+		{V[escena].frases.map((f) => (
+			<Sequence key={f.id} from={f.desde} durationInFrames={f.frames} layout="none">
+				<Audio src={staticFile(`voz/${f.id}.wav`)} />
+			</Sequence>
+		))}
+	</>
+);
 
 const escribir = (texto: string, frame: number, desde: number, hasta: number) =>
 	texto.slice(0, Math.round(interpolate(frame, [desde, hasta], [0, texto.length], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'})));
@@ -20,7 +36,7 @@ const Gancho: React.FC = () => {
 	const salida = useSalida(ESCENAS.gancho);
 	const burbuja = useEntrada(18);
 	const adjunto = useEntrada(32);
-	const duda = useEntrada(58);
+	const duda = useEntrada(frase('gancho', 'gancho2').desde - 4);
 	return (
 		<Fondo>
 			<AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 70, opacity: salida, padding: 80}}>
@@ -79,7 +95,8 @@ const PASOS = ['Abrir el banco', 'Usuario, clave y código', 'Buscar entre cient
 const Dolor: React.FC = () => {
 	const frame = useCurrentFrame();
 	const salida = useSalida(ESCENAS.dolor);
-	const final = useEntrada(95);
+	const d1 = frase('dolor', 'dolor1');
+	const final = useEntrada(frase('dolor', 'dolor2').desde - 4);
 	return (
 		<Fondo>
 			<AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 56, opacity: salida, padding: 80}}>
@@ -88,12 +105,12 @@ const Dolor: React.FC = () => {
 				</Sube>
 				<div style={{display: 'flex', flexDirection: 'column', gap: 24, width: 880}}>
 					{PASOS.map((p, i) => (
-						<Paso key={p} texto={p} n={i + 1} retraso={12 + i * 18} />
+						<Paso key={p} texto={p} n={i + 1} retraso={d1.desde + 6 + Math.round((i * d1.frames) / 4)} />
 					))}
 				</div>
 				<div style={{display: 'flex', alignItems: 'center', gap: 22, opacity: final, transform: `translateY(${(1 - final) * 30}px)`}}>
 					<Reloj size={84} color={C.rojo} angulo={frame * 12} />
-					<div style={{fontSize: 54, fontWeight: 800, color: C.rojo}}>…con cada pago.</div>
+					<div style={{fontSize: 54, fontWeight: 800, color: C.rojo}}>…cada vez que te pagan.</div>
 				</div>
 			</AbsoluteFill>
 		</Fondo>
@@ -190,21 +207,22 @@ const Demo: React.FC = () => {
 // 5 · Fraude: la misma captura dos veces
 const Fraude: React.FC = () => {
 	const frame = useCurrentFrame();
-	const resultado = useEntrada(52, 12);
+	const cambio = frase('fraude', 'fraude2').desde - 2;
+	const resultado = useEntrada(cambio + 2, 12);
 	const salida = useSalida(ESCENAS.fraude);
-	const estado = frame < 50 ? 'cargando' : 'ya_usada';
+	const estado = frame < cambio ? 'cargando' : 'ya_usada';
 	return (
 		<Fondo>
 			<AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 70, opacity: salida, padding: 80}}>
 				<div style={{height: 220, display: 'flex', alignItems: 'center'}}>
-					{frame < 50 ? (
+					{frame < cambio ? (
 						<Sube key="a">
 							<Titulo size={78}>
 								¿Te mandan la <span style={{color: C.ambar}}>misma captura</span> otra vez?
 							</Titulo>
 						</Sube>
 					) : (
-						<Sube key="b" retraso={52}>
+						<Sube key="b" retraso={cambio + 2}>
 							<Titulo size={78}>
 								Te avisa que <span style={{color: C.ambar}}>ya fue usada</span>
 							</Titulo>
@@ -226,6 +244,7 @@ const BENEFICIOS = [
 ];
 const Beneficios: React.FC = () => {
 	const salida = useSalida(ESCENAS.beneficios);
+	const b1 = frase('beneficios', 'beneficios1');
 	return (
 		<Fondo>
 			<AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 56, opacity: salida, padding: 80}}>
@@ -234,7 +253,7 @@ const Beneficios: React.FC = () => {
 				</Sube>
 				<div style={{display: 'flex', flexDirection: 'column', gap: 26, width: 900}}>
 					{BENEFICIOS.map((b, i) => (
-						<Beneficio key={b.texto} {...b} retraso={10 + i * 16} />
+						<Beneficio key={b.texto} {...b} retraso={b1.desde + Math.round((i * b1.frames) / 4)} />
 					))}
 				</div>
 			</AbsoluteFill>
@@ -254,10 +273,11 @@ const Beneficio: React.FC<{Icono: React.FC<{size?: number; color?: string}>; tex
 };
 
 // 7 · Cierre con llamado a la acción
-export const Cierre: React.FC<{conSalida?: boolean}> = () => {
+export const Cierre: React.FC = () => {
 	const frame = useCurrentFrame();
-	const boton = useEntrada(26, 10);
-	const latido = 1 + Math.max(0, Math.sin((frame - 40) / 7)) * 0.03 * (frame > 40 ? 1 : 0);
+	const inicioBoton = frase('cierre', 'cierre2').desde - 6;
+	const boton = useEntrada(inicioBoton, 10);
+	const latido = 1 + Math.max(0, Math.sin((frame - inicioBoton - 14) / 7)) * 0.03 * (frame > inicioBoton + 14 ? 1 : 0);
 	return (
 		<Fondo oscuro>
 			<AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', gap: 64, padding: 80}}>
@@ -288,7 +308,7 @@ export const Cierre: React.FC<{conSalida?: boolean}> = () => {
 						<div style={{fontSize: 56, fontWeight: 800, fontVariantNumeric: 'tabular-nums'}}>{WHATSAPP}</div>
 					</div>
 				</div>
-				<Sube retraso={40}>
+				<Sube retraso={inicioBoton + 14}>
 					<Marca size={58} color={C.blanco} />
 				</Sube>
 			</AbsoluteFill>
@@ -298,7 +318,7 @@ export const Cierre: React.FC<{conSalida?: boolean}> = () => {
 };
 
 export const VideoPublicidad: React.FC = () => {
-	const orden: [keyof typeof ESCENAS, React.FC][] = [
+	const orden: [NombreEscena, React.FC][] = [
 		['gancho', Gancho],
 		['dolor', Dolor],
 		['revelacion', Revelacion],
@@ -314,6 +334,7 @@ export const VideoPublicidad: React.FC = () => {
 				const s = (
 					<Sequence key={nombre} from={desde} durationInFrames={ESCENAS[nombre]} name={nombre}>
 						<Escena />
+						<Voz escena={nombre} />
 					</Sequence>
 				);
 				desde += ESCENAS[nombre];

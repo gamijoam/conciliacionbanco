@@ -1,0 +1,100 @@
+{
+  "fps": 30,
+  "escenas": {
+    "gancho": {
+      "duracion": 121,
+      "frases": [
+        {
+          "id": "gancho1",
+          "desde": 8,
+          "frames": 57
+        },
+        {
+          "id": "gancho2",
+          "desde": 77,
+          "frames": 26
+        }
+      ]
+    },
+    "dolor": {
+      "duracion": 275,
+      "frases": [
+        {
+          "id": "dolor1",
+          "desde": 8,
+          "frames": 204
+        },
+        {
+          "id": "dolor2",
+          "desde": 218,
+          "frames": 39
+        }
+      ]
+    },
+    "revelacion": {
+      "duracion": 116,
+      "frases": [
+        {
+          "id": "revelacion1",
+          "desde": 8,
+          "frames": 90
+        }
+      ]
+    },
+    "demo": {
+      "duracion": 266,
+      "frases": [
+        {
+          "id": "demo1",
+          "desde": 10,
+          "frames": 68
+        },
+        {
+          "id": "demo2",
+          "desde": 162,
+          "frames": 86
+        }
+      ]
+    },
+    "fraude": {
+      "duracion": 168,
+      "frases": [
+        {
+          "id": "fraude1",
+          "desde": 8,
+          "frames": 67
+        },
+        {
+          "id": "fraude2",
+          "desde": 81,
+          "frames": 69
+        }
+      ]
+    },
+    "beneficios": {
+      "duracion": 221,
+      "frases": [
+        {
+          "id": "beneficios1",
+          "desde": 8,
+          "frames": 195
+        }
+      ]
+    },
+    "cierre": {
+      "duracion": 280,
+      "frases": [
+        {
+          "id": "cierre1",
+          "desde": 8,
+          "frames": 76
+        },
+        {
+          "id": "cierre2",
+          "desde": 90,
+          "frames": 172
+        }
+      ]
+    }
+  }
+}
