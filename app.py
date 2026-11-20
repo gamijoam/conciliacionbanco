@@ -29,6 +29,7 @@ import webbrowser
 import os
 import re
 import sqlite3
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -53,16 +54,50 @@ OCULTAR = os.getenv("BDV_OCULTAR_NAVEGADOR", "no").lower() in ("si", "sí", "tru
 
 # ---------------------------------------------------------------- utilidades
 
+MIN_DIGITOS_REF = 6   # mínimo de dígitos de referencia para buscar
+
+
 def a_numero(texto):
-    """'-2.300,00 Bs.' -> -2300.0   |   '1250.5' -> 1250.5"""
-    t = re.sub(r"[^\d,.\-]", "", texto)
-    if "," in t:
-        t = t.replace(".", "").replace(",", ".")
-    return float(t)
+    """Convierte un monto escrito por la cajera o leído del banco a número.
+
+    '-2.300,00 Bs.' -> -2300.0   '2.000' -> 2000.0   '2000,50' -> 2000.5
+    '1250.5' -> 1250.5           '1,234.56' -> 1234.56
+    Un punto seguido de exactamente 3 dígitos se toma como separador de miles
+    (formato venezolano). La coma, si está, siempre es el decimal salvo que
+    aparezca antes que un punto ('1,234.56').
+    """
+    t = re.sub(r"[^\d,.\-]", "", texto or "").strip(".,")
+    if not re.search(r"\d", t):
+        raise ValueError(f"Monto inválido: '{texto}'. Escríbelo así: 2000,00")
+    if "," in t and "." in t:
+        if t.rfind(",") > t.rfind("."):          # 2.300,00  (venezolano)
+            t = t.replace(".", "").replace(",", ".")
+        else:                                    # 2,300.00  (inglés)
+            t = t.replace(",", "")
+    elif "," in t:
+        partes = t.split(",")
+        if len(partes) > 2:                      # 1,000,000 -> miles
+            t = t.replace(",", "")
+        else:                                    # 2000,50 -> decimal
+            t = t.replace(",", ".")
+    elif "." in t:
+        partes = t.split(".")
+        if len(partes) > 2 or len(partes[1]) == 3:   # 2.000 / 1.000.000 -> miles
+            t = t.replace(".", "")
+    try:
+        return float(t)
+    except ValueError:
+        raise ValueError(f"Monto inválido: '{texto}'. Escríbelo así: 2000,00") from None
 
 
 def solo_digitos(s):
     return re.sub(r"\D", "", s)
+
+
+def sin_tildes(s):
+    """'Sesión Inválida' -> 'sesion invalida' (para comparar textos del banco)."""
+    s = unicodedata.normalize("NFKD", s or "")
+    return "".join(c for c in s if not unicodedata.combining(c)).lower()
 
 
 def db():
@@ -127,11 +162,12 @@ class Banco:
             snack = p.locator("mat-snack-bar-container, .mat-simple-snackbar")
             if snack.count() and snack.first.is_visible():
                 txt = snack.first.inner_text().strip()
-                if "sesion activa" in txt.lower():
+                norm = sin_tildes(txt)
+                if "sesion activa" in norm:
                     raise RuntimeError("El banco indica: 'Cliente tiene una sesion activa'. Cierra la app BDV en tu telefono o espera unos minutos a que el banco la libere.")
-                elif "bloqueado" in txt.lower():
+                elif "bloquead" in norm:
                     raise RuntimeError("Tu usuario BDV se encuentra temporalmente bloqueado por el banco.")
-                elif any(w in txt.lower() for w in ["invalida", "incorrecta", "error"]):
+                elif any(w in norm for w in ["invalid", "incorrect", "error"]):
                     raise RuntimeError(f"El banco indico: {txt}")
         else:
             if "/main/" not in p.url:
@@ -226,8 +262,8 @@ class Banco:
 
 def verificar(banco, referencia, monto):
     ref = solo_digitos(referencia)
-    if len(ref) < 4:
-        return "ERROR", "Escribe al menos 4 dígitos de la referencia.", None
+    if len(ref) < MIN_DIGITOS_REF:
+        return "ERROR", f"Escribe al menos {MIN_DIGITOS_REF} dígitos de la referencia (los últimos).", None
     print(f"\n[Verificando] Ref: {ref} | Monto: {monto:.2f} Bs.")
     for intento in range(2):
         try:
@@ -243,16 +279,22 @@ def verificar(banco, referencia, monto):
             banco.login()
     banco.ultimo_uso = time.time()
     # celdas: Fecha, Referencia, Descripción, Débito/Crédito, Monto, Saldo
-    coinciden = [f for f in filas if ref in solo_digitos(f[1])]
-    creditos = [f for f in coinciden if "CREDITO" in f[3].upper().replace("É", "E")]
+    # Solo cuenta si la referencia del banco TERMINA en los dígitos escritos
+    # (o es exactamente igual). Así "123456" no coincide con "991234567".
+    coinciden = [f for f in filas if solo_digitos(f[1]).endswith(ref)]
+    creditos = [f for f in coinciden if "credito" in sin_tildes(f[3])]
     if not coinciden:
         return "NO_ENCONTRADO", "La referencia no aparece en los movimientos.", None
     if not creditos:
         f = coinciden[0]
         return "NO_ES_CREDITO", f"{f[0]} · {f[2]} · {f[3]} · {f[4]}", f[1]
-    for f in creditos:
-        if abs(a_numero(f[4]) - monto) < 0.01:
-            return "APROBADO", f"{f[0]} · Ref {f[1]} · {f[2]} · {f[4]}", f[1]
+    exactos = [f for f in creditos if abs(a_numero(f[4]) - monto) < 0.01]
+    if len(exactos) == 1:
+        f = exactos[0]
+        return "APROBADO", f"{f[0]} · Ref {f[1]} · {f[2]} · {f[4]}", f[1]
+    if len(exactos) > 1:
+        refs = ", ".join(f[1] for f in exactos)
+        return "VARIAS", f"Hay {len(exactos)} pagos con esos dígitos y ese monto ({refs}). Escribe la referencia completa.", None
     f = creditos[0]
     return "MONTO_DIFERENTE", f"En el banco: {f[4]} ({f[0]} · Ref {f[1]})", f[1]
 
@@ -268,7 +310,7 @@ HTML = """
  button{padding:10px 18px;font-size:16px;border:0;border-radius:8px;background:#0057b8;color:#fff;cursor:pointer}
  .r{margin-top:20px;padding:16px;border-radius:10px;font-size:18px}
  .APROBADO{background:#e6f6ea;color:#14632b}.NO_ENCONTRADO,.NO_ES_CREDITO{background:#fde8e8;color:#8a1c1c}
- .MONTO_DIFERENTE,.YA_USADA{background:#fff4dc;color:#7a5200}.ERROR{background:#eee}
+ .MONTO_DIFERENTE,.YA_USADA,.VARIAS{background:#fff4dc;color:#7a5200}.ERROR{background:#eee}
  small{display:block;margin-top:6px;font-size:13px;opacity:.85}
  table{width:100%;margin-top:28px;border-collapse:collapse;font-size:14px}
  td,th{padding:6px;border-bottom:1px solid #eee;text-align:left}
@@ -278,7 +320,7 @@ HTML = """
  <a href="/cerrar" onclick="return confirm('¿Deseas cerrar la sesión en el Banco de Venezuela ahora?')" style="font-size:13px; color:#d93025; text-decoration:none; padding:6px 12px; border:1px solid #d93025; border-radius:6px; font-weight:500;">Cerrar sesión BDV</a>
 </div>
 <form method="post" onsubmit="var btn=document.getElementById('btnSubmit'); btn.disabled=true; btn.innerText='⏳ Verificando con BDV...';">
- <input name="referencia" placeholder="Referencia (completa o últimos dígitos)" required autofocus>
+ <input name="referencia" placeholder="Referencia (completa o últimos 6+ dígitos)" required autofocus>
  <input name="monto" placeholder="Monto (ej. 2000,00)" required>
  <button id="btnSubmit">Verificar</button>
 </form>
@@ -290,7 +332,9 @@ HTML = """
 TITULOS = {"APROBADO": "✅ Aprobado", "NO_ENCONTRADO": "❌ No encontrado",
            "NO_ES_CREDITO": "❌ La referencia existe pero no es un pago recibido",
            "MONTO_DIFERENTE": "⚠️ Referencia encontrada, pero el monto no coincide",
-           "YA_USADA": "⚠️ Esta referencia ya fue aprobada antes", "ERROR": "Error"}
+           "YA_USADA": "⚠️ Esta referencia ya fue aprobada antes",
+           "VARIAS": "⚠️ Varios pagos coinciden: hace falta la referencia completa",
+           "ERROR": "Error"}
 
 
 class Trabajador(threading.Thread):

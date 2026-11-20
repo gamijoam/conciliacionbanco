@@ -17,7 +17,7 @@ Después se abre solo en tu navegador, en http://127.0.0.1:5000.
 
 ## Uso
 
-Escribe la referencia (completa o los últimos dígitos), el monto, y presiona Enter. El formulario queda listo para la siguiente consulta.
+Escribe la referencia (completa o al menos los últimos 6 dígitos), el monto (`2000,00`, `2.000,00` o `2.000`), y presiona Enter. El formulario queda listo para la siguiente consulta.
 
 | Resultado | Significado |
 |---|---|
@@ -26,6 +26,7 @@ Escribe la referencia (completa o los últimos dígitos), el monto, y presiona E
 | ❌ No es un pago recibido | La referencia existe, pero es un débito |
 | ⚠️ Monto no coincide | Muestra el monto que aparece en el banco |
 | ⚠️ Ya usada | Ese pago ya se aprobó antes (protege contra capturas repetidas) |
+| ⚠️ Varios pagos coinciden | Hay más de un crédito con esos dígitos y ese monto: escribe la referencia completa |
 
 **Deja la ventana negra abierta.** Mientras siga abierta, el programa atiende todas las consultas que hagas.
 
