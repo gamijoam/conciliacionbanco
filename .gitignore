@@ -1,0 +1,25 @@
+# Archivos de configuración con credenciales sensibles
+.env
+
+# Base de datos local
+*.db
+historial.db
+
+# Perfil del navegador y sesiones
+perfil_navegador/
+perfil_*/
+
+# Entorno virtual de Python
+.venv/
+venv/
+ENV/
+
+# Archivos compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos temporales e imágenes de prueba
+*.png
+*.jpg
+*.log
