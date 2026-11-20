@@ -1,0 +1,22 @@
+{
+  "name": "conciliador-publicidad",
+  "version": "1.0.0",
+  "description": "Video e imágenes publicitarias del Conciliador (Remotion)",
+  "scripts": {
+    "estudio": "remotion studio",
+    "video": "remotion render Video-Reels salida/Video-Reels.mp4 --codec=h264 --crf=20",
+    "imagenes": "remotion still Post-Aprobado salida/Post-Aprobado.png && remotion still Post-Fraude salida/Post-Fraude.png && remotion still Post-AntesAhora salida/Post-AntesAhora.png && remotion still Historia salida/Historia.png",
+    "todo": "npm run imagenes && npm run video"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@remotion/cli": "^4.0.545",
+    "@types/react": "^18.3.31",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.545",
+    "typescript": "^7.0.2"
+  },
+  "private": true
+}
