@@ -20,8 +20,13 @@ if not exist .venv\Scripts\python.exe (
     pause
     exit /b 1
   )
+)
+
+:: Instala dependencias la primera vez y cada vez que cambie requirements.txt
+fc /b requirements.txt .venv\requirements.instalado >nul 2>&1
+if errorlevel 1 (
   echo Instalando dependencias...
-  .venv\Scripts\python -m pip install --default-timeout 1000 -q -r requirements.txt
+  .venv\Scripts\python -m pip install --default-timeout 1000 -q -r requirements.txt && copy /y requirements.txt .venv\requirements.instalado >nul
 )
 
 if not exist .env (
@@ -30,5 +35,5 @@ if not exist .env (
   notepad .env
 )
 
-.venv\Scripts\python app.py
+.venv\Scripts\python app.py %*
 pause

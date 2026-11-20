@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block contenido %}
+{% if aviso %}<div class="aviso">{{ aviso }}</div>{% endif %}
+<form method="post" action="{{ url_for('verificar_pago') }}" class="fila"
+      onsubmit="var b=document.getElementById('btn');b.disabled=true;b.innerText='⏳ Verificando con BDV...';">
+ <input type="hidden" name="csrf" value="{{ csrf }}">
+ <input name="referencia" placeholder="Referencia (completa o últimos {{ min_ref }}+ dígitos)"
+        inputmode="numeric" required autofocus>
+ <input name="monto" placeholder="Monto (ej. 2000,00)" inputmode="decimal" required>
+ <button id="btn">Verificar</button>
+</form>
+{% if ultimo %}
+<div class="r {{ ultimo.res }}">{{ titulos[ultimo.res] }}
+ <small>Ref {{ ultimo.ref or '—' }} · Monto {{ ultimo.monto }}</small>
+ <small>{{ ultimo.detalle }}</small>
+</div>
+{% endif %}
+<h2>{% if yo.rol == 'admin' %}Últimas verificaciones (todas las cajeras){% else %}Mis últimas verificaciones{% endif %}</h2>
+<div class="tabla"><table>
+ <tr><th>Fecha</th><th>Referencia</th><th>Monto</th><th>Resultado</th>{% if yo.rol == 'admin' %}<th>Cajera</th>{% endif %}</tr>
+ {% for h in hist %}
+ <tr><td>{{ h[0][:16].replace('T',' ') }}</td><td>{{ h[1] }}</td><td>{{ "%.2f"|format(h[2]) }}</td>
+     <td>{{ titulos.get(h[3], h[3]) }}</td>{% if yo.rol == 'admin' %}<td>{{ h[4] or '—' }}</td>{% endif %}</tr>
+ {% else %}
+ <tr><td colspan="5" class="gris">Todavía no hay verificaciones.</td></tr>
+ {% endfor %}
+</table></div>
+{% endblock %}

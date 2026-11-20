@@ -3,7 +3,10 @@ cd "$(dirname "$0")"
 if [ ! -d .venv ]; then
   echo "Primera vez: instalando el programa, espera un momento..."
   python3 -m venv .venv
-  .venv/bin/python -m pip install -q -r requirements.txt
+fi
+# Instala dependencias la primera vez y cada vez que cambie requirements.txt
+if ! cmp -s requirements.txt .venv/requirements.instalado; then
+  .venv/bin/python -m pip install -q -r requirements.txt && cp requirements.txt .venv/requirements.instalado
   .venv/bin/python -m playwright install chromium
 fi
 if [ ! -f .env ]; then
@@ -11,4 +14,4 @@ if [ ! -f .env ]; then
   echo "Llena tus datos en .env y vuelve a ejecutar este archivo."
   ${EDITOR:-nano} .env
 fi
-.venv/bin/python app.py
+.venv/bin/python app.py "$@"
