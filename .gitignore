@@ -26,3 +26,6 @@ __pycache__/
 
 # Llave de las sesiones web de las cajeras
 .secreto_web
+
+# Capturas de diagnóstico (contienen movimientos del banco)
+diagnostico/
