@@ -1,0 +1,104 @@
+{
+  "_ayuda": "Texto de la voz del video. 'min' = frame mínimo (dentro de la escena) en que empieza la frase; 'pausa' = frames de silencio después de la frase anterior. Después de editar: python narracion/generar_voz.py",
+  "voz": "es_MX-claude-high",
+  "velocidad": 0.85,
+  "fps": 30,
+  "cola": 18,
+  "escenas": {
+    "gancho": {
+      "base": 95,
+      "frases": [
+        {
+          "id": "gancho1",
+          "texto": "¿Te llegó el pago móvil, o no?",
+          "min": 6
+        },
+        {
+          "id": "gancho2",
+          "texto": "¿Será verdad?",
+          "pausa": 12
+        }
+      ]
+    },
+    "dolor": {
+      "base": 140,
+      "frases": [
+        {
+          "id": "dolor1",
+          "texto": "Para saberlo, tienes que entrar al banco, poner tu clave y el código, y buscar entre cientos de movimientos.",
+          "min": 4
+        },
+        {
+          "id": "dolor2",
+          "texto": "Cada vez que te pagan.",
+          "pausa": 6
+        }
+      ]
+    },
+    "revelacion": {
+      "base": 80,
+      "frases": [
+        {
+          "id": "revelacion1",
+          "texto": "Con Conciliador, verificas tus pagos en segundos.",
+          "min": 8
+        }
+      ]
+    },
+    "demo": {
+      "base": 225,
+      "frases": [
+        {
+          "id": "demo1",
+          "texto": "Escribe la referencia y el monto.",
+          "min": 10
+        },
+        {
+          "id": "demo2",
+          "texto": "Y en segundos, sabes si el pago llegó de verdad.",
+          "min": 162
+        }
+      ]
+    },
+    "fraude": {
+      "base": 130,
+      "frases": [
+        {
+          "id": "fraude1",
+          "texto": "¿Te mandan la misma captura otra vez?",
+          "min": 4
+        },
+        {
+          "id": "fraude2",
+          "texto": "Conciliador te avisa que ya fue usada.",
+          "pausa": 6
+        }
+      ]
+    },
+    "beneficios": {
+      "base": 135,
+      "frases": [
+        {
+          "id": "beneficios1",
+          "texto": "Tu clave se queda en tu computadora. Tus cajeras verifican desde su PC. Y tienes el historial de cada pago.",
+          "min": 8
+        }
+      ]
+    },
+    "cierre": {
+      "base": 120,
+      "frases": [
+        {
+          "id": "cierre1",
+          "texto": "Deja de entrar al banco por cada pago.",
+          "min": 4
+        },
+        {
+          "id": "cierre2",
+          "texto": "Escríbenos por WhatsApp: cero cuatro dos dos, setecientos cuarenta y uno, cero cero, noventa y cuatro.",
+          "pausa": 6
+        }
+      ]
+    }
+  }
+}

@@ -59,6 +59,10 @@ CUENTA = os.getenv("BDV_CUENTA", "").strip()
 SESION_MIN = float(os.getenv("BDV_SESION_MINUTOS") or "10")   # sesión abierta tras la última consulta
 PING_SEG = float(os.getenv("BDV_PING_SEGUNDOS") or "90")       # cada cuánto "tocar" el banco
 OCULTAR = os.getenv("BDV_OCULTAR_NAVEGADOR", "no").lower() in ("si", "sí", "true", "1")
+DEPURAR = os.getenv("BDV_DEPURAR", "no").lower() in ("si", "sí", "true", "1")
+DIAGNOSTICO = BASE / "diagnostico"
+# En Linux como root Chrome no arranca con sandbox; en Windows/Mac sí se usa.
+SANDBOX = not (sys.platform.startswith("linux") and hasattr(os, "geteuid") and os.geteuid() == 0)
 ESCUCHAR_RED = os.getenv("BDV_ESCUCHAR_RED", "no").lower() in ("si", "sí", "true", "1")
 PUERTO = int(os.getenv("BDV_PUERTO") or "5000")
 
@@ -138,7 +142,10 @@ class Banco:
         ctx = None
         for channel in ("chrome", "msedge", None):
             try:
-                opts = {"headless": OCULTAR, "viewport": {"width": 1366, "height": 800}}
+                opts = {"headless": OCULTAR, "viewport": {"width": 1366, "height": 800},
+                        # Sin esto Playwright abre Chrome con --no-sandbox y aparece la
+                        # barra amarilla "marca de línea de comandos no admitida".
+                        "chromium_sandbox": SANDBOX}
                 if channel:
                     opts["channel"] = channel
                 ctx = self.pw.chromium.launch_persistent_context(str(PERFIL), **opts)
@@ -268,59 +275,216 @@ class Banco:
         dlg.locator("table, mat-table").wait_for(timeout=15000)
         p.wait_for_timeout(500)
 
-    def buscar(self, referencia):
-        d = self.dialogo()
-        caja = d.locator("input").first
+    def caja_busqueda(self, d):
+        """El buscador del diálogo: primero el que dice 'buscar'/'filtrar', si no el primer campo de texto."""
+        for sel in ("input[placeholder*='uscar' i]", "input[aria-label*='uscar' i]",
+                    "input[placeholder*='iltr' i]", "input[type=search]",
+                    "input[type=text]:visible", "input:visible"):
+            c = d.locator(sel)
+            if c.count():
+                return c.first
+        raise RuntimeError("No encontré el buscador dentro de la ventana de movimientos.")
+
+    def leer_tabla(self, d):
+        """Lee encabezados y filas de la tabla de movimientos de una sola vez (rápido y sin
+        depender de cómo Angular arme las celdas)."""
+        return d.evaluate("""(el) => {
+            const tabla = el.querySelector('table, mat-table, [role=table], [role=grid]');
+            if (!tabla) return {encabezados: [], filas: []};
+            const txt = n => (n.innerText || n.textContent || '').replace(/\\s+/g, ' ').trim();
+            const encabezados = [...tabla.querySelectorAll('th, mat-header-cell, [role=columnheader]')].map(txt);
+            const filas = [...tabla.querySelectorAll('tr, mat-row, [role=row]')]
+                .map(r => [...r.querySelectorAll('td, mat-cell, [role=cell], [role=gridcell]')].map(txt))
+                .filter(c => c.length >= 3 && c.some(x => x));
+            return {encabezados, filas};
+        }""")
+
+    def buscar(self, referencia, espera_max=8.0):
+        """Escribe la referencia en el buscador del banco como si fuera una persona (tecla por
+        tecla, para que el filtro del banco reaccione) y espera a que la tabla se actualice."""
+        d = self.dialogo().first
+        caja = self.caja_busqueda(d)
+        caja.click()
         caja.fill("")
-        caja.fill(referencia)
-        self.page.wait_for_timeout(800)
-        filas = []
-        filas_elem = d.locator("table tr, mat-table mat-row, mat-row").all()
-        for r in filas_elem:
-            celdas = [c.inner_text().strip() for c in r.locator("td, mat-cell, [role=gridcell]").all()]
-            if len(celdas) >= 5:
-                filas.append(celdas)
-        return filas
+        caja.press_sequentially(referencia, delay=60)
+        caja.dispatch_event("input")
+        caja.dispatch_event("keyup")
+        inicio = time.time()
+        anterior, igual_desde = None, time.time()
+        while True:
+            self.page.wait_for_timeout(300)
+            tabla = self.leer_tabla(d)
+            movs = interpretar_tabla(tabla)
+            if any(ref_coincide(m["referencia"], referencia) for m in movs):
+                break                               # ya apareció: no hace falta esperar más
+            firma = repr(tabla["filas"])
+            if firma != anterior:
+                anterior, igual_desde = firma, time.time()
+            transcurrido = time.time() - inicio
+            # sin coincidencias: esperar a que la tabla deje de cambiar (mín. 2 s) o el máximo
+            if (transcurrido > 2.0 and time.time() - igual_desde > 1.2) or transcurrido > espera_max:
+                break
+        print(f"   Tabla del banco: {len(tabla['filas'])} fila(s) · columnas: {tabla['encabezados']}")
+        self.ultima_tabla = tabla
+        return movs
+
+    def guardar_diagnostico(self, referencia, motivo):
+        """Guarda captura y contenido de la tabla para revisar por qué no coincidió.
+        OJO: contiene datos de tus movimientos; no lo compartas por canales públicos."""
+        try:
+            DIAGNOSTICO.mkdir(exist_ok=True)
+            base = DIAGNOSTICO / f"{datetime.now():%Y%m%d-%H%M%S}_{referencia}_{motivo}"
+            self.page.screenshot(path=str(base.with_suffix(".png")), full_page=True)
+            import json
+            base.with_suffix(".json").write_text(json.dumps(getattr(self, "ultima_tabla", {}),
+                                                            ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"   [diagnóstico guardado en {base.name}.png/.json]")
+        except Exception as e:
+            print("   [no se pudo guardar el diagnóstico]", e)
+
+
+# ---------------------------------------------------------------- lectura de la tabla
+
+COLUMNAS = {   # palabra clave en el encabezado -> campo
+    "fecha": "fecha", "refer": "referencia", "descrip": "descripcion", "concepto": "descripcion",
+    "tipo": "tipo", "debito/credito": "tipo", "d/c": "tipo", "monto": "monto", "importe": "monto",
+    "saldo": "saldo",
+}
+ORDEN_POR_DEFECTO = ["fecha", "referencia", "descripcion", "tipo", "monto", "saldo"]
+
+
+def mapa_columnas(encabezados, n_celdas):
+    """Índice de cada campo según los encabezados; si no se reconocen, el orden de siempre."""
+    mapa = {}
+    norm = [sin_tildes(h).replace(" ", "") for h in encabezados]
+    # Si hay encabezados de más (columna de ícono sin celda, etc.) se alinean por la derecha
+    desfase = n_celdas - len(norm)
+    for i, h in enumerate(norm):
+        if h in ("debito", "credito"):                      # columnas separadas de débito y crédito
+            mapa.setdefault("col_" + h, i + desfase)
+            continue
+        for clave, campo in COLUMNAS.items():
+            if clave.replace(" ", "") in h and campo not in mapa:
+                mapa[campo] = i + desfase
+                break
+    if "referencia" not in mapa:
+        mapa = {c: i for i, c in enumerate(ORDEN_POR_DEFECTO) if i < n_celdas}
+    return mapa
+
+
+def monto_seguro(texto):
+    try:
+        return a_numero(texto)
+    except ValueError:
+        return None
+
+
+def interpretar_tabla(tabla):
+    """Convierte la tabla cruda en movimientos: {referencia, fecha, descripcion, monto,
+    monto_texto, es_credito, celdas}."""
+    movs = []
+    for celdas in tabla.get("filas", []):
+        m = mapa_columnas(tabla.get("encabezados", []), len(celdas))
+        g = lambda campo: celdas[m[campo]] if campo in m and 0 <= m[campo] < len(celdas) else ""
+        monto_txt, tipo = g("monto"), sin_tildes(g("tipo"))
+        es_credito = None
+        if "col_credito" in m or "col_debito" in m:         # columnas Débito | Crédito separadas
+            cred = g("col_credito") if "col_credito" in m else ""
+            deb = g("col_debito") if "col_debito" in m else ""
+            if monto_seguro(cred):
+                es_credito, monto_txt = True, cred
+            elif monto_seguro(deb):
+                es_credito, monto_txt = False, deb
+        elif tipo:
+            if "credito" in tipo or "abono" in tipo or tipo.strip() in ("c", "cr", "+"):
+                es_credito = True
+            elif "debito" in tipo or "cargo" in tipo or tipo.strip() in ("d", "db", "-"):
+                es_credito = False
+        valor = monto_seguro(monto_txt)
+        if es_credito is None and valor is not None:          # sin columna de tipo: por el signo
+            es_credito = valor > 0
+        movs.append({"referencia": g("referencia"), "fecha": g("fecha"), "descripcion": g("descripcion"),
+                     "monto": abs(valor) if valor is not None else None, "monto_texto": monto_txt,
+                     "es_credito": bool(es_credito), "celdas": celdas})
+    return movs
+
+
+def ref_coincide(ref_banco, escrita):
+    """'123456' coincide con '000123456' (termina igual) y '000123123456' (captura con más
+    dígitos) coincide con '23123456' (el banco muestra menos), pero '123456' NO con '991234567'."""
+    b = solo_digitos(ref_banco)
+    if not b or not escrita:
+        return False
+    return b.endswith(escrita) or (len(b) >= MIN_DIGITOS_REF and escrita.endswith(b))
+
 
 # ---------------------------------------------------------------- verificación
 
-def verificar(banco, referencia, monto):
+def bs(valor):
+    """2000.5 -> '2.000,50'"""
+    return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def verificar(banco, referencia, monto=None):
+    """Busca la referencia en el banco. Si `monto` es None, solo comprueba la referencia
+    y devuelve el monto que aparece en el banco.
+    Devuelve (resultado, detalle, referencia_del_banco, monto_del_banco)."""
     ref = solo_digitos(referencia)
     if len(ref) < MIN_DIGITOS_REF:
-        return "ERROR", f"Escribe al menos {MIN_DIGITOS_REF} dígitos de la referencia (los últimos).", None
-    print(f"\n[Verificando] Ref: {ref} | Monto: {monto:.2f} Bs.")
+        return "ERROR", f"Escribe al menos {MIN_DIGITOS_REF} dígitos de la referencia (los últimos).", None, None
+    print(f"\n[Verificando] Ref: {ref} | Monto: {'(sin monto)' if monto is None else f'{monto:.2f} Bs.'}")
     for intento in range(2):
         try:
             if not banco.logueado():
                 banco.login()
             banco.abrir_movimientos()
-            filas = banco.buscar(ref)
+            movs = banco.buscar(ref)
+            # El banco puede mostrar la referencia más corta que la captura (y su buscador
+            # solo busca en lo que muestra): reintentar con los últimos dígitos.
+            if len(ref) > MIN_DIGITOS_REF and not any(ref_coincide(m["referencia"], ref) for m in movs):
+                print(f"   Sin resultados con {ref}; probando con los últimos {MIN_DIGITOS_REF} dígitos...")
+                movs = banco.buscar(ref[-MIN_DIGITOS_REF:])
             break
         except Exception as e:
             if intento or "sesion activa" in str(e).lower():
                 raise
-            print("[!] Reintentando conexion con el banco...")
+            print("[!] Reintentando conexion con el banco...", e)
             banco.login()
     banco.ultimo_uso = time.time()
-    # celdas: Fecha, Referencia, Descripción, Débito/Crédito, Monto, Saldo
-    # Solo cuenta si la referencia del banco TERMINA en los dígitos escritos
-    # (o es exactamente igual). Así "123456" no coincide con "991234567".
-    coinciden = [f for f in filas if solo_digitos(f[1]).endswith(ref)]
-    creditos = [f for f in coinciden if "credito" in sin_tildes(f[3])]
+
+    if DEPURAR and hasattr(banco, "guardar_diagnostico"):
+        banco.guardar_diagnostico(ref, "depurar")
+    coinciden = [m for m in movs if ref_coincide(m["referencia"], ref)]
+    creditos = [m for m in coinciden if m["es_credito"]]
+    describe = lambda m: f"{m['fecha']} · Ref {m['referencia']} · {m['descripcion']}".strip(" ·")
     if not coinciden:
-        return "NO_ENCONTRADO", "La referencia no aparece en los movimientos.", None
+        if hasattr(banco, "guardar_diagnostico") and movs is not None:
+            banco.guardar_diagnostico(ref, "no_encontrado")
+        return ("NO_ENCONTRADO", f"La referencia no aparece en los movimientos "
+                f"(se revisaron {len(movs)} movimiento(s) después de filtrar).", None, None)
     if not creditos:
-        f = coinciden[0]
-        return "NO_ES_CREDITO", f"{f[0]} · {f[2]} · {f[3]} · {f[4]}", f[1]
-    exactos = [f for f in creditos if abs(a_numero(f[4]) - monto) < 0.01]
+        m = coinciden[0]
+        return "NO_ES_CREDITO", f"{describe(m)} · {m['monto_texto']}", m["referencia"], m["monto"]
+
+    if monto is None:                                    # solo referencia: decir el monto
+        if len(creditos) == 1:
+            m = creditos[0]
+            return "APROBADO", f"Monto en el banco: Bs. {bs(m['monto'])} · {describe(m)}", m["referencia"], m["monto"]
+        lista = "; ".join(f"Ref {m['referencia']}: Bs. {bs(m['monto'])}" for m in creditos)
+        return ("VARIAS", f"Hay {len(creditos)} pagos con esos dígitos ({lista}). "
+                "Escribe la referencia completa o el monto.", None, None)
+
+    exactos = [m for m in creditos if m["monto"] is not None and abs(m["monto"] - monto) < 0.01]
     if len(exactos) == 1:
-        f = exactos[0]
-        return "APROBADO", f"{f[0]} · Ref {f[1]} · {f[2]} · {f[4]}", f[1]
+        m = exactos[0]
+        return "APROBADO", f"Monto en el banco: Bs. {bs(m['monto'])} · {describe(m)}", m["referencia"], m["monto"]
     if len(exactos) > 1:
-        refs = ", ".join(f[1] for f in exactos)
-        return "VARIAS", f"Hay {len(exactos)} pagos con esos dígitos y ese monto ({refs}). Escribe la referencia completa.", None
-    f = creditos[0]
-    return "MONTO_DIFERENTE", f"En el banco: {f[4]} ({f[0]} · Ref {f[1]})", f[1]
+        refs = ", ".join(m["referencia"] for m in exactos)
+        return ("VARIAS", f"Hay {len(exactos)} pagos con esos dígitos y ese monto ({refs}). "
+                "Escribe la referencia completa.", None, None)
+    m = creditos[0]
+    return ("MONTO_DIFERENTE", f"En el banco: Bs. {bs(m['monto']) if m['monto'] is not None else m['monto_texto']} "
+            f"· {describe(m)}", m["referencia"], m["monto"])
 
 # ---------------------------------------------------------------- interfaz web
 
@@ -614,13 +778,14 @@ def crear_app(trabajador):
     def verificar_pago():
         yo = usuario_actual()
         ref = solo_digitos(request.form.get("referencia", ""))
-        monto_txt = request.form.get("monto", "")
+        monto_txt = request.form.get("monto", "").strip()
+        monto_banco = None
         try:
-            monto = a_numero(monto_txt)
-            if monto <= 0:
+            monto = a_numero(monto_txt) if monto_txt else None     # sin monto: solo la referencia
+            if monto is not None and monto <= 0:
                 raise ValueError("El monto debe ser mayor que cero.")
-            print(f"[{yo['usuario']}] consulta ref {ref} por {monto:.2f}")
-            res, detalle, ref_banco = trabajador.consultar(ref, monto)
+            print(f"[{yo['usuario']}] consulta ref {ref}" + (f" por {monto:.2f}" if monto is not None else " (sin monto)"))
+            res, detalle, ref_banco, monto_banco = trabajador.consultar(ref, monto)
             con = db()
             try:
                 with resultado_lock:
@@ -635,13 +800,15 @@ def crear_app(trabajador):
                             ref = ref_banco      # se guarda la referencia completa del banco
                     con.execute("INSERT INTO verificados(referencia,monto,resultado,detalle,fecha,cajera) "
                                 "VALUES(?,?,?,?,?,?)",
-                                (ref, monto, res, detalle, datetime.now().isoformat(), yo["usuario"]))
+                                (ref, monto_banco if monto is None else monto, res, detalle,
+                                 datetime.now().isoformat(), yo["usuario"]))
                     con.commit()
             finally:
                 con.close()
         except Exception as e:
             res, detalle = "ERROR", str(e)
-        session["ultimo"] = {"res": res, "detalle": detalle, "ref": ref, "monto": monto_txt}
+        session["ultimo"] = {"res": res, "detalle": detalle, "ref": ref, "monto": monto_txt,
+                             "monto_banco": bs(monto_banco) if monto_banco is not None else None}
         return redirect(url_for("index"))     # recargar la página no repite la consulta
 
     @app.route("/cerrar-banco", methods=["POST"])

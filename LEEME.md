@@ -48,6 +48,7 @@ En Mac/Linux usa `./iniciar.sh` en lugar de `iniciar.bat`.
 | `BDV_PING_SEGUNDOS` | Cada cuántos segundos se "toca" el banco para que no cierre la sesión | `90` |
 | `BDV_ESCUCHAR_RED` | `si` para que entren las cajeras desde otras computadoras. `no` = solo esta computadora | `si` |
 | `BDV_PUERTO` | Puerto de la página | `5000` |
+| `BDV_DEPURAR` | `si` para guardar captura y tabla de cada consulta en `diagnostico/` | `no` |
 
 Después de cambiar el `.env`, cierra la ventana negra y vuelve a abrir `iniciar.bat`.
 
@@ -149,18 +150,27 @@ Si una caja no puede entrar:
 
 ## 5. Uso (cajeras)
 
-Escribe la referencia (completa, o **al menos los últimos 6 dígitos**) y el monto (`2000,00`, `2.000,00` o `2.000`), y presiona Enter. El formulario queda listo para la siguiente consulta.
+Escribe la referencia (completa, o **al menos los últimos 6 dígitos**) y presiona Enter. El formulario queda listo para la siguiente consulta.
+
+- **Con monto** (`2000,00`, `2.000,00` o `2.000`): comprueba que la referencia y el monto coincidan.
+- **Sin monto** (deja la casilla vacía): busca solo la referencia y te dice **cuánto se recibió**. Compara tú ese monto con lo que te deben.
 
 | Resultado | Significado |
 |---|---|
-| ✅ Aprobado | Hay un crédito con esa referencia y ese monto |
+| ✅ Aprobado | Hay un crédito con esa referencia (y ese monto, si lo escribiste). Muestra el monto que aparece en el banco |
 | ❌ No encontrado | La referencia no está en los movimientos |
 | ❌ No es un pago recibido | La referencia existe, pero es un débito |
 | ⚠️ Monto no coincide | Muestra el monto que aparece en el banco |
 | ⚠️ Ya usada | Ese pago ya se aprobó antes, y muestra cuándo y qué cajera lo aprobó (protege contra capturas repetidas) |
-| ⚠️ Varios pagos coinciden | Hay más de un crédito con esos dígitos y ese monto: escribe la referencia completa |
+| ⚠️ Varios pagos coinciden | Hay más de un crédito con esos dígitos: escribe la referencia completa (o el monto) |
 
-La referencia tiene que coincidir con el **final** de la referencia del banco. "123456" encuentra "000123456", pero no "991234567".
+La referencia tiene que coincidir con el **final** de la referencia del banco. "123456" encuentra "000123456", pero no "991234567". Si la captura trae más dígitos que los que muestra el banco, también la encuentra.
+
+### Si dice "No encontrado" y el pago sí está
+
+Cada vez que el resultado es "No encontrado", el programa guarda en la carpeta **`diagnostico/`** una captura de la pantalla del banco y un archivo `.json` con lo que leyó de la tabla. Si pasa con un pago que sí está, revisa esos archivos o envíaselos a quien te da soporte. **Contienen tus movimientos: no los publiques.**
+
+Para guardar el diagnóstico en todas las consultas, pon `BDV_DEPURAR=si` en el `.env`.
 
 ---
 

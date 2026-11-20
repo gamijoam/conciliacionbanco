@@ -6,12 +6,15 @@
  <input type="hidden" name="csrf" value="{{ csrf }}">
  <input name="referencia" placeholder="Referencia (completa o últimos {{ min_ref }}+ dígitos)"
         inputmode="numeric" required autofocus>
- <input name="monto" placeholder="Monto (ej. 2000,00)" inputmode="decimal" required>
+ <input name="monto" placeholder="Monto (opcional, ej. 2000,00)" inputmode="decimal">
  <button id="btn">Verificar</button>
 </form>
 {% if ultimo %}
 <div class="r {{ ultimo.res }}">{{ titulos[ultimo.res] }}
- <small>Ref {{ ultimo.ref or '—' }} · Monto {{ ultimo.monto }}</small>
+ {% if ultimo.monto_banco and ultimo.res in ('APROBADO', 'YA_USADA', 'MONTO_DIFERENTE') %}
+ <div class="monto">Bs. {{ ultimo.monto_banco }}</div>
+ {% endif %}
+ <small>Ref {{ ultimo.ref or '—' }} · {% if ultimo.monto %}Monto escrito {{ ultimo.monto }}{% else %}sin monto: se muestra el del banco{% endif %}</small>
  <small>{{ ultimo.detalle }}</small>
 </div>
 {% endif %}
