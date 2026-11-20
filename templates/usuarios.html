@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}Usuarios · Conciliador BDV{% endblock %}
+{% block contenido %}
+{% if aviso %}<div class="aviso">{{ aviso }}</div>{% endif %}
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<h2 style="margin-top:0">Crear usuario</h2>
+<form method="post" action="{{ url_for('usuario_nuevo') }}" class="fila">
+ <input type="hidden" name="csrf" value="{{ csrf }}">
+ <input name="usuario" placeholder="Usuario (ej. maria)" required>
+ <input name="nombre" placeholder="Nombre (ej. María Pérez)">
+ <input name="clave" type="password" placeholder="Clave (mín. 6)" autocomplete="new-password" required>
+ <select name="rol"><option value="cajera">Cajera</option><option value="admin">Administrador</option></select>
+ <button>Crear</button>
+</form>
+<h2>Usuarios</h2>
+<div class="tabla"><table>
+ <tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Nueva clave</th><th></th></tr>
+ {% for u in lista %}
+ <tr{% if not u[3] %} class="gris"{% endif %}>
+  <td>{{ u[0] }}</td><td>{{ u[1] }}</td><td>{{ u[2] }}</td><td>{{ 'Activo' if u[3] else 'Desactivado' }}</td>
+  <td>
+   <form method="post" action="{{ url_for('usuario_clave', usuario=u[0]) }}" style="display:flex;gap:4px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input name="clave" type="password" placeholder="Nueva clave" autocomplete="new-password" required style="min-width:110px;padding:6px;font-size:14px">
+    <button class="sec">Cambiar</button>
+   </form>
+  </td>
+  <td>
+   {% if u[0]|lower != yo.usuario|lower %}
+   <form method="post" action="{{ url_for('usuario_activo', usuario=u[0]) }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="activo" value="{{ 0 if u[3] else 1 }}">
+    <button class="{{ 'peligro' if u[3] else 'sec' }}">{{ 'Desactivar' if u[3] else 'Activar' }}</button>
+   </form>
+   {% endif %}
+  </td>
+ </tr>
+ {% endfor %}
+</table></div>
+<p class="gris" style="font-size:13px">Los usuarios no se borran, se desactivan, para que el historial siga mostrando quién verificó cada pago.</p>
+{% endblock %}

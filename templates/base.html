@@ -1,0 +1,49 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}Conciliador BDV{% endblock %}</title>
+<style>
+ *{box-sizing:border-box}
+ body{font-family:system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#1d1d1f;background:#fff}
+ h1{font-size:22px;margin:0} h2{font-size:18px;margin-top:32px}
+ header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+ nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px}
+ nav a{color:#0057b8;text-decoration:none} nav form{margin:0}
+ form.fila{display:flex;gap:8px;flex-wrap:wrap}
+ input,select{padding:10px;font-size:16px;border:1px solid #ccc;border-radius:8px;flex:1;min-width:140px}
+ button{padding:10px 18px;font-size:16px;border:0;border-radius:8px;background:#0057b8;color:#fff;cursor:pointer}
+ button.sec{background:#fff;color:#0057b8;border:1px solid #0057b8;padding:6px 12px;font-size:14px}
+ button.peligro{background:#fff;color:#d93025;border:1px solid #d93025;padding:6px 12px;font-size:14px}
+ button:disabled{opacity:.6;cursor:wait}
+ .r{margin-top:20px;padding:16px;border-radius:10px;font-size:18px}
+ .APROBADO{background:#e6f6ea;color:#14632b}.NO_ENCONTRADO,.NO_ES_CREDITO{background:#fde8e8;color:#8a1c1c}
+ .MONTO_DIFERENTE,.YA_USADA,.VARIAS{background:#fff4dc;color:#7a5200}.ERROR{background:#eee}
+ .aviso{background:#e8f0fe;color:#174ea6;padding:10px 14px;border-radius:8px;margin-bottom:12px}
+ .error{background:#fde8e8;color:#8a1c1c;padding:10px 14px;border-radius:8px;margin-bottom:12px}
+ small{display:block;margin-top:6px;font-size:13px;opacity:.85}
+ .tabla{overflow-x:auto}
+ table{width:100%;margin-top:16px;border-collapse:collapse;font-size:14px}
+ td,th{padding:6px;border-bottom:1px solid #eee;text-align:left;vertical-align:middle}
+ .gris{color:#888}
+</style></head><body>
+{% if yo %}
+<header>
+ <h1>Conciliador BDV · cuenta ***{{ cuenta }}</h1>
+ <nav>
+  <span class="gris">{{ yo.nombre }} ({{ yo.rol }})</span>
+  <a href="{{ url_for('index') }}">Verificar</a>
+  {% if yo.rol == 'admin' %}
+   <a href="{{ url_for('usuarios') }}">Usuarios</a>
+   <form method="post" action="{{ url_for('cerrar_banco') }}"
+         onsubmit="return confirm('¿Cerrar la sesión en el Banco de Venezuela ahora?')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="peligro">Cerrar sesión BDV</button>
+   </form>
+  {% endif %}
+  <form method="post" action="{{ url_for('salir') }}">
+   <input type="hidden" name="csrf" value="{{ csrf }}"><button class="sec">Salir</button>
+  </form>
+ </nav>
+</header>
+{% endif %}
+{% block contenido %}{% endblock %}
+</body></html>
