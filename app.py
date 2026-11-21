@@ -886,6 +886,13 @@ def crear_app(trabajador):
         return render_template("mensaje.html", titulo="Sin permiso",
                                texto="Esta página es solo para el administrador."), 403
 
+    @app.errorhandler(500)
+    def error_interno(e):
+        # El detalle queda en la ventana negra; a la cajera se le muestra algo entendible.
+        return render_template("mensaje.html", titulo="Algo salió mal",
+                               texto="Ocurrió un error en el programa. Intenta de nuevo y, si se repite, "
+                                     "avisa al administrador (el detalle aparece en la ventana negra)."), 500
+
     @app.errorhandler(400)
     def mala_peticion(e):
         return render_template("mensaje.html", titulo="Formulario vencido",
