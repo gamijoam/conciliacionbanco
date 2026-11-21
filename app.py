@@ -165,11 +165,29 @@ class Banco:
         return (p.locator("input[type=text], #mat-input-0").count() > 0
                 or p.locator("input[type=password]").count() > 0)
 
+    def ir_al_login(self):
+        """Abre BDVenlínea y espera a que aparezca el formulario (o la página interna).
+        No se espera a que la red quede quieta ("networkidle"): la página del banco
+        sigue consultando al servidor y esa espera nunca terminaba (Timeout 30000ms)."""
+        p = self.page
+        print("-> Abriendo BDVenlinea...")
+        try:
+            p.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+        except PWTimeout:
+            print("[!] El banco está tardando en cargar; reviso si la página ya está lista...")
+        inicio = time.time()
+        while time.time() - inicio < 45:
+            if "/main/" in p.url or p.locator("input[type=text], #mat-input-0").count():
+                return
+            p.wait_for_timeout(500)
+        raise RuntimeError("La página de BDVenlínea no cargó (más de 1 minuto). El banco puede estar "
+                           "lento o caído: ábrelo en Chrome para comprobarlo e intenta de nuevo.")
+
     def login(self):
         p = self.page
         if "/main/" in p.url:
             return
-        p.goto(LOGIN_URL, wait_until="networkidle")
+        self.ir_al_login()
         if "/main/" in p.url:
             return
         print("-> Conectando con BDVenlinea...")
@@ -435,6 +453,8 @@ def verificar(banco, referencia, monto=None):
     print(f"\n[Verificando] Ref: {ref} | Monto: {'(sin monto)' if monto is None else f'{monto:.2f} Bs.'}")
     for intento in range(2):
         try:
+            if intento:
+                print("[!] Reintentando conexion con el banco...")
             if not banco.logueado():
                 banco.login()
             banco.abrir_movimientos()
@@ -446,10 +466,12 @@ def verificar(banco, referencia, monto=None):
                 movs = banco.buscar(ref[-MIN_DIGITOS_REF:])
             break
         except Exception as e:
-            if intento or "sesion activa" in str(e).lower():
+            print("[!] Falló la consulta:", str(e).splitlines()[0])
+            if intento or "sesion activa" in sin_tildes(str(e)):
+                if isinstance(e, PWTimeout):        # mensaje entendible para la cajera
+                    raise RuntimeError("El banco tardó demasiado en responder. Intenta de nuevo en unos "
+                                       "momentos; si se repite, revisa la ventana de Chrome del programa.") from None
                 raise
-            print("[!] Reintentando conexion con el banco...", e)
-            banco.login()
     banco.ultimo_uso = time.time()
 
     if DEPURAR and hasattr(banco, "guardar_diagnostico"):
@@ -885,6 +907,13 @@ def crear_app(trabajador):
     def prohibido(e):
         return render_template("mensaje.html", titulo="Sin permiso",
                                texto="Esta página es solo para el administrador."), 403
+
+    @app.errorhandler(500)
+    def error_interno(e):
+        # El detalle queda en la ventana negra; a la cajera se le muestra algo entendible.
+        return render_template("mensaje.html", titulo="Algo salió mal",
+                               texto="Ocurrió un error en el programa. Intenta de nuevo y, si se repite, "
+                                     "avisa al administrador (el detalle aparece en la ventana negra)."), 500
 
     @app.errorhandler(400)
     def mala_peticion(e):

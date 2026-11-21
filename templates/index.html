@@ -22,7 +22,7 @@
 <div class="tabla"><table>
  <tr><th>Fecha</th><th>Referencia</th><th>Monto</th><th>Resultado</th>{% if yo.rol == 'admin' %}<th>Cajera</th>{% endif %}</tr>
  {% for h in hist %}
- <tr><td>{{ h[0][:16].replace('T',' ') }}</td><td>{{ h[1] }}</td><td>{{ "%.2f"|format(h[2]) }}</td>
+ <tr><td>{{ h[0][:16].replace('T',' ') }}</td><td>{{ h[1] }}</td><td>{{ "%.2f"|format(h[2]) if h[2] is not none else "—" }}</td>
      <td>{{ titulos.get(h[3], h[3]) }}</td>{% if yo.rol == 'admin' %}<td>{{ h[4] or '—' }}</td>{% endif %}</tr>
  {% else %}
  <tr><td colspan="5" class="gris">Todavía no hay verificaciones.</td></tr>
